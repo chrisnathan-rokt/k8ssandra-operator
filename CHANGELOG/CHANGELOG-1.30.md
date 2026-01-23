@@ -13,6 +13,11 @@ Changelog for the K8ssandra Operator, new PRs should update the `unreleased` sec
 
 When cutting a new release, update the `unreleased` heading to the tag being generated and date, like `## vX.Y.Z - YYYY-MM-DD` and create a new placeholder section for  `unreleased` entries.
 
+## unreleased
+
+* [CHANGE] Upgrade cassandra-reaper to 4.1.1
+* [CHANGE] Upgrade cass-operator to v1.28.1
+
 ## v1.30.1 - 2026-01-08
 
 This is an update of Helm chart dependency.
