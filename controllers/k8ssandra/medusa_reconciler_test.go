@@ -727,12 +727,14 @@ func createSingleDcClusterWithManagementApiSecured(t *testing.T, ctx context.Con
 func checkPurgeSchedule(t *testing.T, ctx context.Context, namespace string, kc *api.K8ssandraCluster, dc *cassdcapi.CassandraDatacenter, f *framework.Framework, dataPlaneContext string) {
 	purgeSchedule := &medusaapi.MedusaBackupSchedule{}
 	purgeScheduleKey := framework.ClusterKey{NamespacedName: types.NamespacedName{Namespace: namespace, Name: medusa.MedusaPurgeScheduleName(kc.SanitizedName(), dc.DatacenterName())}, K8sContext: dataPlaneContext}
-	// Verify CassandraDatacenter was deleted
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		require.NoError(t, f.Get(ctx, purgeScheduleKey, purgeSchedule))
 		require.Equal(t, purgeSchedule.Spec.OperationType, string(medusaapi.OperationTypePurge))
 		require.Equal(t, purgeSchedule.Spec.CronSchedule, "0 0 * * *")
-	}, timeout, interval, "CassandraDatacenter should be deleted")
+		// CassandraDatacenter field must be the DC's Kubernetes metadata name (dc.Name),
+		// not the Cassandra datacenter name (dc.DatacenterName()), since it's used for resource lookups.
+		require.Equal(t, dc.Name, purgeSchedule.Spec.BackupSpec.CassandraDatacenter)
+	}, timeout, interval, "purge schedule should exist with correct spec")
 }
 
 func checkNoPurgeSchedule(ctx context.Context, namespace string, kc *api.K8ssandraCluster, dc *cassdcapi.CassandraDatacenter, f *framework.Framework, dataPlaneContext string, require *require.Assertions) {

@@ -2,7 +2,6 @@ package k8ssandra
 
 import (
 	"context"
-	"fmt"
 	"net"
 
 	"github.com/go-logr/logr"
@@ -72,7 +71,7 @@ func (r *K8ssandraClusterReconciler) reconcileSeedsEndpoints(
 	}
 	filteredSeeds = append(filteredSeeds, additionalSeeds...)
 
-	prefixName := fmt.Sprintf("%s-%s", kc.Name, dc.GetAdditionalSeedsServiceName())
+	prefixName := dc.GetAdditionalSeedsServiceName()
 
 	ipv4Addresses := make([]string, 0)
 	ipv6Addresses := make([]string, 0)

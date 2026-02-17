@@ -312,7 +312,7 @@ func (r *K8ssandraClusterReconciler) createPurgeSchedule(ctx context.Context, re
 		},
 		Spec: medusaapi.MedusaBackupScheduleSpec{
 			BackupSpec: medusaapi.MedusaBackupJobSpec{
-				CassandraDatacenter: dc.DatacenterName(),
+				CassandraDatacenter: dc.Name,
 			},
 			CronSchedule:  "0 0 * * *",
 			OperationType: string(medusaapi.OperationTypePurge),

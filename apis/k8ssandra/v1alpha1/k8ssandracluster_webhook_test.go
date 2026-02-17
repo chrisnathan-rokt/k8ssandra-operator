@@ -181,6 +181,7 @@ func TestWebhook(t *testing.T) {
 	t.Run("ReaperStorage", testReaperStorage)
 	t.Run("NoDCRename", testNoDCRename)
 	t.Run("MedusaMandatoryFieldsMissing", testMedusaMandatoryFieldsMissing)
+	t.Run("EndpointSliceNameTooLong", testEndpointSliceNameTooLong)
 }
 
 func testContextValidation(t *testing.T) {
@@ -687,6 +688,75 @@ func TestValidateUpdateNumTokens(t *testing.T) {
 	}
 }
 
+func TestValidateEndpointSliceNameSize(t *testing.T) {
+	tests := []struct {
+		name           string
+		clusterName    string
+		dcMetaName     string
+		datacenterName string
+		expectErr      bool
+	}{
+		{
+			name:        "short names pass",
+			clusterName: "cluster",
+			dcMetaName:  "dc1",
+			expectErr:   false,
+		},
+		{
+			name:        "long names fail on additional seeds service",
+			clusterName: "my-cluster-name-test",
+			dcMetaName:  "my-dc-name-test-abcd",
+			expectErr:   true,
+		},
+		{
+			// additional seeds: "test-cluster-name-ab-test-dc-name-abcde-additional-seed-service" = 63 chars
+			name:        "names at exactly 63 chars pass",
+			clusterName: "test-cluster-name-ab", // 20 chars
+			dcMetaName:  "test-dc-name-abcde",  // 18 chars
+			expectErr:   false,                  // 20 + 1 + 18 + 1 + 23 = 63 exactly
+		},
+		{
+			name:           "long datacenterName override also checked",
+			clusterName:    "short",
+			dcMetaName:     "dc1",
+			datacenterName: "avery-long-datacenter-name-that-is-unreasonably-long-for-use",
+			expectErr:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			kc := &K8ssandraCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      tt.clusterName,
+					Namespace: "test-ns",
+				},
+				Spec: K8ssandraClusterSpec{
+					Cassandra: &CassandraClusterTemplate{
+						Datacenters: []CassandraDatacenterTemplate{
+							{
+								Meta:       EmbeddedObjectMeta{Name: tt.dcMetaName},
+								K8sContext: "envtest",
+								Size:       1,
+								DatacenterOptions: DatacenterOptions{
+									DatacenterName: tt.datacenterName,
+								},
+							},
+						},
+					},
+				},
+			}
+			err := validateEndpointSliceNameSize(kc)
+			if tt.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "too long")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func testAutomatedUpdateAnnotation(t *testing.T) {
 	require := require.New(t)
 	createNamespace(require, "automated-update-namespace")
@@ -702,6 +772,26 @@ func testAutomatedUpdateAnnotation(t *testing.T) {
 
 	cluster.Annotations[AutomatedUpdateAnnotation] = string("true")
 	require.Error(validateK8ssandraCluster(cluster))
+}
+
+func testEndpointSliceNameTooLong(t *testing.T) {
+	required := require.New(t)
+	createNamespace(required, "epslice-namespace")
+
+	// This cluster+dc combination produces service names > 63 chars:
+	// "my-cluster-name-test-my-dc-name-test-abcd-additional-seed-service" = 65 chars
+	cluster := createMinimalClusterObj("my-cluster-name-test", "epslice-namespace")
+	cluster.Spec.Cassandra.Datacenters[0].Meta.Name = "my-dc-name-test-abcd"
+
+	err := k8sClient.Create(ctx, cluster)
+	required.Error(err)
+	required.Contains(err.Error(), "too long")
+
+	// A shorter name should be accepted
+	cluster2 := createMinimalClusterObj("short-cluster", "epslice-namespace")
+	cluster2.Spec.Cassandra.Datacenters[0].Meta.Name = "dc1"
+	err = k8sClient.Create(ctx, cluster2)
+	required.NoError(err)
 }
 
 func testNoDCRename(t *testing.T) {

@@ -144,6 +144,10 @@ func validateK8ssandraCluster(r *K8ssandraCluster) error {
 		return err
 	}
 
+	if err := validateEndpointSliceNameSize(r); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -159,7 +163,8 @@ func validateStatefulsetNameSize(r *K8ssandraCluster) error {
 				Name: dc.Meta.Name,
 			},
 			Spec: cassdcapi.CassandraDatacenterSpec{
-				ClusterName: clusterName,
+				ClusterName:    clusterName,
+				DatacenterName: dc.CassDcName(),
 			},
 		}
 
@@ -174,6 +179,46 @@ func validateStatefulsetNameSize(r *K8ssandraCluster) error {
 			stsName := reconciliation.NewNamespacedNameForStatefulSet(realDc, "default")
 			if len(stsName.Name) > 60 {
 				return fmt.Errorf("the name of the statefulset for DC %s is too long", dc.CassDcName())
+			}
+		}
+	}
+	return nil
+}
+
+func validateEndpointSliceNameSize(r *K8ssandraCluster) error {
+	clusterName := r.ObjectMeta.Name
+	if r.Spec.Cassandra.ClusterName != "" {
+		clusterName = r.Spec.Cassandra.ClusterName
+	}
+	sanitizedClusterName := cassdcapi.CleanupForKubernetes(clusterName)
+
+	for _, dc := range r.Spec.Cassandra.Datacenters {
+		// Check both possible DC label resource names:
+		// - dc.Meta.Name: used when Status.DatacenterName is not yet populated (e.g. during upgrades)
+		// - dc.CassDcName(): used when Status.DatacenterName is populated (normal operation)
+		dcLabelNames := []string{cassdcapi.CleanupForKubernetes(dc.Meta.Name)}
+		if dc.CassDcName() != dc.Meta.Name {
+			dcLabelNames = append(dcLabelNames, cassdcapi.CleanupForKubernetes(dc.CassDcName()))
+		}
+
+		for _, sanitizedDcName := range dcLabelNames {
+			// EndpointSlices use kubernetes.io/service-name label to link to their parent Service.
+			// Label values are limited to 63 characters. These service names are used as label values,
+			// so they must not exceed 63 characters.
+			additionalSeedsName := sanitizedClusterName + "-" + sanitizedDcName + "-additional-seed-service"
+			if len(additionalSeedsName) > 63 {
+				return fmt.Errorf(
+					"the additional seeds service name for DC %s is too long (%d chars, max 63): "+
+						"reduce the cluster name and/or datacenter name length",
+					dc.CassDcName(), len(additionalSeedsName))
+			}
+
+			contactPointsName := sanitizedClusterName + "-" + sanitizedDcName + "-contact-points-service"
+			if len(contactPointsName) > 63 {
+				return fmt.Errorf(
+					"the contact points service name for DC %s is too long (%d chars, max 63): "+
+						"reduce the cluster name and/or datacenter name length",
+					dc.CassDcName(), len(contactPointsName))
 			}
 		}
 	}
