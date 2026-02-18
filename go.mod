@@ -37,6 +37,8 @@ require (
 	sigs.k8s.io/yaml v1.4.0
 )
 
+replace github.com/k8ssandra/cass-operator v1.28.1 => /Users/chrisnathan/forked-cass-operator
+
 replace github.com/stretchr/testify => github.com/stretchr/testify v1.10.0
 
 require (
